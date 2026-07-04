@@ -59,6 +59,21 @@ static void boot_enter_ota(void)
     printf("OTA idle timeout\r\n");
 }
 
+static int boot_wait_ota_key(uint32_t timeout_ms)
+{
+    uint32_t start = tick_get();
+
+    uart1_rx_flush();
+    printf("Press '%c' for OTA\r\n", OTA_UPDATE_KEY);
+
+    while ((tick_get() - start) < timeout_ms) {
+        if (boot_poll_ota_key()) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int main(void)
 {
     uint32_t slot_base;
@@ -81,10 +96,11 @@ int main(void)
     }
 
     if (boot_pick_slot(&slot_base, &slot_size, &jump_addr) == 0) {
-        printf("Valid app @ 0x%08lX\r\n", (unsigned long)slot_base);
-		delay_ms(50);
-		jump_to_application(jump_addr);
-		printf("Jump failed\r\n");
+        if (!boot_wait_ota_key(BOOT_WAIT_MS)) {
+            delay_ms(50);
+            jump_to_application(jump_addr);
+            printf("Jump failed\r\n");
+        }
 
     } else {
         printf("No valid signed app\r\n");
