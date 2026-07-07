@@ -414,26 +414,32 @@ def _send_ota_key(ser: serial.Serial, verbose: bool = False, times: int = 5) -> 
 
 
 def enter_ota_mode(log: UartLogReader, ser: serial.Serial, verbose: bool = False) -> None:
-    """Tu app hoac BL: gui 'U' dung luc, doi den 'OTA RX ready'.
+    """Gui 'U' cho app de set co OTA, roi doi bootloader in 'OTA RX ready'.
 
-    Khong gui 'U' khi moi thay 'STM32F103 Bootloader' — luc do MCU dang verify
-    (~1s), UART bi overrun, frame START sau do mat.
-    Chi gui khi: app dang chay, hoac BL da in cua so 'Press U'.
+    Khong gui 'U' sau khi app da reset — bootloader khong con cua so 'Press U'.
     """
-    need_u_keys = (
-        "Press 'U'",
+    app_needles = (
         "app 1 started",
         "app 2 started",
         "Hello world",
     )
 
-    log_print("[PC] ", "Doi app / cua so OTA, gui 'U' khi dung luc...")
-    deadline = time.monotonic() + 25.0
+    log_print("[PC] ", "Doi app, gui 'U' de yeu cau OTA...")
+    deadline = time.monotonic() + 45.0
+    ota_requested = False
 
     while time.monotonic() < deadline:
         try:
+            if ota_requested:
+                needles = ["OTA RX ready", "OTA flag set"]
+            else:
+                needles = [
+                    *app_needles,
+                    "OTA requested, resetting...",
+                    "OTA RX ready",
+                ]
             hit = log.wait_for_any_text(
-                [*need_u_keys, "OTA RX ready"],
+                needles,
                 timeout_s=min(2.0, max(0.1, deadline - time.monotonic())),
             )
         except TimeoutError:
@@ -444,8 +450,14 @@ def enter_ota_mode(log: UartLogReader, ser: serial.Serial, verbose: bool = False
             time.sleep(0.15)
             return
 
-        log_print("[PC] ", f"Thay '{hit}' — gui 'U'...")
-        _send_ota_key(ser, verbose=verbose, times=3)
+        if hit in ("OTA flag set", "OTA requested, resetting..."):
+            ota_requested = True
+            log_print("[PC] ", "App da yeu cau OTA, doi bootloader...")
+            continue
+
+        if not ota_requested:
+            log_print("[PC] ", f"Thay '{hit}' — gui 'U'...")
+            _send_ota_key(ser, verbose=verbose, times=3)
 
     raise TimeoutError("Khong thay 'OTA RX ready' tu MCU")
 
