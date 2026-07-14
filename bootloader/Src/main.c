@@ -9,25 +9,11 @@
 #include <ota.h>
 #include <nvic.h>
 
-#define BOOT_WAIT_MS  3000U
-
 int _write(int file, char *ptr, int len)
 {
     (void)file;
     uart1_write(ptr, len);
     return len;
-}
-
-static int boot_poll_ota_key(void)
-{
-    uint8_t c;
-
-    while (uart1_rx_get(&c) != 0) {
-        if (c == (uint8_t)OTA_UPDATE_KEY) {
-            return 1;
-        }
-    }
-    return 0;
 }
 
 static int boot_pick_slot(uint32_t *slot_base, uint32_t *slot_size, uint32_t *jump_addr)
@@ -59,21 +45,6 @@ static void boot_enter_ota(void)
     printf("OTA idle timeout\r\n");
 }
 
-static int boot_wait_ota_key(uint32_t timeout_ms)
-{
-    uint32_t start = tick_get();
-
-    uart1_rx_flush();
-    printf("Press '%c' for OTA\r\n", OTA_UPDATE_KEY);
-
-    while ((tick_get() - start) < timeout_ms) {
-        if (boot_poll_ota_key()) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
 int main(void)
 {
     uint32_t slot_base;
@@ -96,11 +67,9 @@ int main(void)
     }
 
     if (boot_pick_slot(&slot_base, &slot_size, &jump_addr) == 0) {
-        if (!boot_wait_ota_key(BOOT_WAIT_MS)) {
-            delay_ms(50);
-            jump_to_application(jump_addr);
-            printf("Jump failed\r\n");
-        }
+        delay_ms(50);
+        jump_to_application(jump_addr);
+        printf("Jump failed\r\n");
 
     } else {
         printf("No valid signed app\r\n");
